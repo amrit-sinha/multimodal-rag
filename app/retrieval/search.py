@@ -1,0 +1,27 @@
+import uuid
+from dataclasses import dataclass
+
+from sqlalchemy.orm import Session
+
+from app.models import Chunk
+
+
+@dataclass
+class Retrieved:
+    chunk: Chunk
+    score: float
+
+
+def vector_search(
+    session: Session,
+    query_vector: list[float],
+    top_k: int,
+    document_id: uuid.UUID | None = None,
+) -> list[Retrieved]:
+    """Dense retrieval via pgvector cosine distance."""
+    distance = Chunk.embedding.cosine_distance(query_vector).label("distance")
+    query = session.query(Chunk, distance)
+    if document_id is not None:
+        query = query.filter(Chunk.document_id == document_id)
+    rows = query.order_by(distance).limit(top_k).all()
+    return [Retrieved(chunk=chunk, score=1.0 - float(dist)) for chunk, dist in rows]
