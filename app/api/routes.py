@@ -12,6 +12,8 @@ from app.ingest.tasks import ingest_document
 from app.models import Document, File, IngestJob
 from app.models.schemas import (
     DocumentView,
+    ImageSearchRequest,
+    ImageSearchResponse,
     JobView,
     QueryRequest,
     QueryResponse,
@@ -19,7 +21,7 @@ from app.models.schemas import (
     UploadResponse,
 )
 from app.models.tables import DocStatus
-from app.retrieval.answer import answer_question, stream_answer_events
+from app.retrieval.answer import answer_question, search_images, stream_answer_events
 
 router = APIRouter(dependencies=[Depends(require_api_key), Depends(rate_limit)])
 
@@ -103,7 +105,9 @@ def get_job(document_id: uuid.UUID, session: Session = Depends(get_session)):
 def query(req: QueryRequest, session: Session = Depends(get_session)):
     if not req.question.strip():
         raise HTTPException(400, "Question must not be empty")
-    return answer_question(session, req.question, req.document_id, req.top_k)
+    return answer_question(
+        session, req.question, req.document_id, req.top_k, req.include_images
+    )
 
 
 @router.post("/query/stream")
@@ -113,7 +117,16 @@ def query_stream(req: QueryRequest):
     if not req.question.strip():
         raise HTTPException(400, "Question must not be empty")
     return StreamingResponse(
-        stream_answer_events(req.question, req.document_id, req.top_k),
+        stream_answer_events(req.question, req.document_id, req.top_k, req.include_images),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.post("/search/images", response_model=ImageSearchResponse)
+def search_images_endpoint(req: ImageSearchRequest, session: Session = Depends(get_session)):
+    """Cross-modal search: find images by a text description, ranked by CLIP
+    visual-semantic similarity."""
+    if not req.query.strip():
+        raise HTTPException(400, "Query must not be empty")
+    return search_images(session, req.query, req.document_id, req.top_k)

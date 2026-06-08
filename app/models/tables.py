@@ -113,7 +113,17 @@ class Chunk(Base):
     char_start: Mapped[int | None] = mapped_column(Integer, nullable=True)
     char_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
     bbox: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Storage key of a viewable image (the upload itself, or a crop extracted
+    # from a PDF page). Only set for image chunks.
+    image_key: Mapped[str | None] = mapped_column(String(1024), nullable=True)
 
-    embedding: Mapped[list[float]] = mapped_column(Vector(settings.embedding_dim))
+    # Text chunks carry a bge embedding; image chunks carry a CLIP embedding.
+    # Each lives in its own vector space, so they're stored in separate columns.
+    embedding: Mapped[list[float] | None] = mapped_column(
+        Vector(settings.embedding_dim), nullable=True
+    )
+    image_embedding: Mapped[list[float] | None] = mapped_column(
+        Vector(settings.image_embedding_dim), nullable=True
+    )
 
     document: Mapped["Document"] = relationship(back_populates="chunks")

@@ -27,20 +27,31 @@ class Settings(BaseSettings):
     # Models
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     embedding_dim: int = 384
+    # CLIP shares a text+image embedding space, separate from the bge text space.
+    clip_model: str = "clip-ViT-B-32"
+    image_embedding_dim: int = 512
     ollama_base_url: str = "http://host.docker.internal:11434"
-    llm_model: str = "qwen2.5:3b-instruct"
+    # Multimodal (vision) model so the LLM can actually "see" retrieved images.
+    llm_model: str = "gemma4:12b"
+    # Keep the model resident in Ollama between calls so large models don't pay a
+    # multi-minute cold-load on every request.
+    ollama_keep_alive: str = "30m"
 
     # Retrieval / chunking
     top_k: int = 5
     chunk_size: int = 1000
     chunk_overlap: int = 150
+    # How many images to feed the vision LLM per query, and the minimum CLIP
+    # similarity required to attach one during an unscoped (global) query.
+    image_top_k: int = 2
+    image_score_min: float = 0.22
 
     # Security / ops
     api_key: str = ""  # empty disables auth (dev convenience)
     rate_limit_per_minute: int = 60  # <= 0 disables
     log_level: str = "INFO"
     max_upload_mb: int = 50
-    allowed_mime_types: str = "application/pdf"
+    allowed_mime_types: str = "application/pdf,image/png,image/jpeg,image/webp"
 
     @property
     def allowed_mimes(self) -> set[str]:

@@ -1,7 +1,7 @@
 """End-to-end smoke test: upload a PDF, wait for ingestion, ask a question.
 
 Usage:
-    python scripts/demo.py path/to/file.pdf "your question?"
+    python scripts/demo.py samples/sample.pdf "your question?"
 """
 
 import sys

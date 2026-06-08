@@ -1,3 +1,4 @@
+import io
 from datetime import timedelta
 
 from minio import Minio
@@ -41,6 +42,17 @@ def presigned_put_url(object_key: str, expires_minutes: int = 30) -> str:
 def presigned_get_url(object_key: str, expires_minutes: int = 60) -> str:
     return _client(public=True).presigned_get_object(
         settings.minio_bucket, object_key, expires=timedelta(minutes=expires_minutes)
+    )
+
+
+def upload_bytes(object_key: str, data: bytes, content_type: str) -> None:
+    """Store bytes (e.g. an image cropped out of a PDF page) in object storage."""
+    client.put_object(
+        settings.minio_bucket,
+        object_key,
+        io.BytesIO(data),
+        length=len(data),
+        content_type=content_type,
     )
 
 

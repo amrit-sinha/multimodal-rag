@@ -41,10 +41,12 @@ class QueryRequest(BaseModel):
     question: str
     document_id: uuid.UUID | None = None
     top_k: int | None = None
+    include_images: bool = True
 
 
 class Citation(BaseModel):
     marker: int
+    modality: str = "text"
     chunk_id: uuid.UUID
     document_id: uuid.UUID
     file_id: uuid.UUID
@@ -57,3 +59,23 @@ class Citation(BaseModel):
 class QueryResponse(BaseModel):
     answer: str
     citations: list[Citation]
+
+
+class ImageSearchRequest(BaseModel):
+    query: str
+    document_id: uuid.UUID | None = None
+    top_k: int | None = None
+
+
+class ImageHit(BaseModel):
+    chunk_id: uuid.UUID
+    document_id: uuid.UUID
+    page_no: int | None
+    score: float
+    image_url: str | None
+    bbox: dict | None = None
+
+
+class ImageSearchResponse(BaseModel):
+    query: str
+    hits: list[ImageHit]

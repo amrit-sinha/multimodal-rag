@@ -9,9 +9,11 @@ from app.core.config import settings
 
 
 class LLM(Protocol):
-    def generate(self, system: str, prompt: str) -> str: ...
+    def generate(self, system: str, prompt: str, images: list[str] | None = None) -> str: ...
 
-    def stream(self, system: str, prompt: str) -> Iterator[str]: ...
+    def stream(
+        self, system: str, prompt: str, images: list[str] | None = None
+    ) -> Iterator[str]: ...
 
 
 class OllamaLLM:
@@ -21,37 +23,47 @@ class OllamaLLM:
         self.base_url = (base_url or settings.ollama_base_url).rstrip("/")
         self.model = model or settings.llm_model
 
-    def _messages(self, system: str, prompt: str) -> list[dict]:
+    def _messages(self, system: str, prompt: str, images: list[str] | None) -> list[dict]:
+        user_msg: dict = {"role": "user", "content": prompt}
+        if images:
+            # Ollama multimodal models accept base64 images on the message.
+            user_msg["images"] = images
         return [
             {"role": "system", "content": system},
-            {"role": "user", "content": prompt},
+            user_msg,
         ]
 
-    def generate(self, system: str, prompt: str) -> str:
+    def generate(self, system: str, prompt: str, images: list[str] | None = None) -> str:
         payload = {
             "model": self.model,
-            "messages": self._messages(system, prompt),
+            "messages": self._messages(system, prompt, images),
             "stream": False,
+            "keep_alive": settings.ollama_keep_alive,
             "options": {"temperature": 0.1},
         }
         # Generous timeout: the first call cold-loads the model into (V)RAM,
         # which is slow on modest GPUs before generation even starts.
         with httpx.Client(timeout=600) as client:
             resp = client.post(f"{self.base_url}/api/chat", json=payload)
-            resp.raise_for_status()
+            if resp.status_code >= 400:
+                raise RuntimeError(f"Ollama {resp.status_code}: {resp.text[:600]}")
             return resp.json()["message"]["content"]
 
-    def stream(self, system: str, prompt: str) -> Iterator[str]:
+    def stream(
+        self, system: str, prompt: str, images: list[str] | None = None
+    ) -> Iterator[str]:
         """Yields content tokens as Ollama produces them (newline-delimited JSON)."""
         payload = {
             "model": self.model,
-            "messages": self._messages(system, prompt),
+            "messages": self._messages(system, prompt, images),
             "stream": True,
+            "keep_alive": settings.ollama_keep_alive,
             "options": {"temperature": 0.1},
         }
         with httpx.Client(timeout=600) as client:
             with client.stream("POST", f"{self.base_url}/api/chat", json=payload) as resp:
-                resp.raise_for_status()
+                if resp.status_code >= 400:
+                    raise RuntimeError(f"Ollama {resp.status_code}: {resp.read().decode()[:600]}")
                 for line in resp.iter_lines():
                     if not line:
                         continue

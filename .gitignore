@@ -33,3 +33,6 @@ Thumbs.db
 # Local model / data caches
 .cache/
 hf-cache/
+
+# Local demo / test assets
+samples/
