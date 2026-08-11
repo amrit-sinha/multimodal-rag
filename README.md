@@ -1,131 +1,107 @@
 # Multimodal RAG
 
-A backend service for **retrieval-augmented generation over your own documents**.
-Upload PDFs or images, the system asynchronously chunks and embeds them into a
-vector store, and you can ask questions that are answered **with citations
-pointing back to the source** (page, file, or image).
+A local-first backend for retrieval-augmented generation over PDFs and images.
+It ingests documents asynchronously, retrieves relevant text and visual content,
+and generates grounded answers with source citations.
 
-Built to run entirely on **open-source, local models** (no API keys required).
+## Highlights
 
-> **Status:** PDF and image ingestion, CLIP text→image search, vision-LLM
-> answers, page-level citations, streaming, and production hardening (auth,
-> rate limiting, logging).
-
-## Features
-
-- **Asynchronous ingestion pipeline** — uploads kick off a staged Celery job
-  (`extract → chunk → embed → index`) with live per-stage status, retries, and
-  idempotent re-indexing. Long work never blocks a request.
-- **Direct-to-storage uploads** — the API hands out presigned URLs so file bytes
-  go straight to object storage; the API never buffers large files.
-- **Multimodal (text + images)** — upload images, or let the pipeline pull
-  images out of PDF pages. CLIP encodes images and text into one shared space,
-  so a plain-text query can retrieve semantically matching images. Retrieved
-  images are then handed to a **vision LLM** (Gemma4:12b), so you can ask "what
-  is in this image?" and get a grounded answer — not just a similarity match.
-- **Provenance-rich citations** — every chunk stores where it came from (file,
-  page, character span, on-page bounding box). Query responses return page,
-  snippet, score, and a presigned link to the source file or image.
-- **Pluggable model backends** — embedders and the LLM sit behind small
-  interfaces; alternate implementations (e.g. a hosted API) can be swapped in
-  without touching ingestion or retrieval code.
-- **Streaming answers (SSE)** — `/query/stream` streams the answer token-by-token
-  and emits citations once the full answer is known.
-- **Production hardening** — API-key auth, Redis-backed rate limiting, structured
-  logging with per-request IDs, and consistent JSON error responses.
+- PDF text extraction and image ingestion with page-level provenance
+- BGE text retrieval and CLIP text-to-image search
+- Vision-language answers through Gemma 4 running on Ollama
+- Citations with source page, snippet, similarity score, and presigned URL
+- Background ingestion with progress tracking, retries, and idempotent re-indexing
+- Server-Sent Events (SSE) for streaming answers
+- Optional API-key authentication, Redis rate limiting, and request-ID logging
 
 ## Architecture
 
-```
-                 presigned PUT
-   client ───────────────────────────────►  MinIO (object storage)
-     │                                            ▲
-     │ 1. POST /documents (register + get URL)    │ download bytes
-     │ 2. PUT file to presigned URL               │
-     │ 3. POST /documents/{id}/ingest             │
-     ▼                                            │
-  FastAPI  ──enqueue──►  Redis  ──►  Celery worker ─┘
-     │                                  │
-     │                                  │ extract → chunk → embed → index
-     │ 4. POST /query                   │ (BGE text + CLIP images)
-     └──────────────►  Postgres + pgvector
-                                  │
-                                  ▼
-              Ollama (vision LLM + retrieved images)  →  answer + citations
+```text
+Client
+  ├─ register document ───────────────► FastAPI
+  ├─ upload with presigned URL ───────► MinIO
+  └─ start ingestion ─────────────────► Celery + Redis
+                                            │
+                              extract → chunk → embed → index
+                                            │
+                                            ▼
+                                  PostgreSQL + pgvector
+                                            │
+Client ◄──── answer + citations ◄──── FastAPI ────► Ollama
 ```
 
-## Tech stack
+Text chunks and image chunks use separate vector spaces:
 
-| Concern            | Choice                                   |
-| ------------------ | ---------------------------------------- |
-| API                | FastAPI                                   |
-| Async jobs         | Celery + Redis                            |
-| Metadata + vectors | Postgres + `pgvector`                     |
-| Object storage     | MinIO (S3-compatible)                     |
-| Text embeddings    | `BAAI/bge-small-en-v1.5` (local, CPU)     |
-| Image embeddings   | CLIP `clip-ViT-B-32` (local, shared text+image space) |
-| LLM generation     | Ollama (`gemma4:12b`, local **vision** model) |
-| PDF / image parsing| PyMuPDF + Pillow                          |
+- `BAAI/bge-small-en-v1.5` for text retrieval
+- `clip-ViT-B-32` for cross-modal image retrieval
+- `gemma4:e2b` for grounded text and vision responses
 
-## Prerequisites
+## Stack
 
-1. **Docker + Docker Compose**
-2. **Ollama** running on the host with a **vision-capable** model pulled:
-
-```bash
-ollama pull gemma4:12b
-```
-
-The app reaches Ollama at `http://host.docker.internal:11434` from inside Docker.
+| Component | Technology |
+| --- | --- |
+| API | FastAPI |
+| Background jobs | Celery + Redis |
+| Database and vectors | PostgreSQL + pgvector |
+| Object storage | MinIO |
+| Document processing | PyMuPDF + Pillow |
+| Local models | Sentence Transformers + Ollama |
 
 ## Quick start
+
+Requirements:
+
+- Docker and Docker Compose
+- Ollama running on the host
+
+Pull the vision model:
+
+```bash
+ollama pull gemma4:e2b
+```
+
+Configure and start the application:
 
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
-Services:
+The API documentation is available at <http://localhost:8000/docs> and the
+MinIO console at <http://localhost:9001>.
 
-- API + docs: http://localhost:8000/docs
-- MinIO console: http://localhost:9001 (user/pass from `.env`)
+Supported uploads are PDF, PNG, JPEG, and WebP.
 
-Supported uploads: PDF, PNG, JPEG, WebP (`ALLOWED_MIME_TYPES` in `.env`).
+## Demo
 
-Run the end-to-end demo (uploads a PDF, waits for ingestion, asks a question):
+Place test files in `samples/`, then run the PDF question-answering flow:
 
 ```bash
 pip install httpx
 python scripts/demo.py samples/sample.pdf "What is this document about?"
 ```
 
-Image search demo (upload images, query by text description via CLIP):
+Run text-to-image search with CLIP:
 
 ```bash
 python scripts/demo_image_search.py "a red square" samples/red_square.png samples/blue_circle.png
 ```
 
-Put sample files under `samples/` locally.
-
 ## API
 
-| Method | Path                             | Purpose                                   |
-| ------ | -------------------------------- | ----------------------------------------- |
-| POST   | `/api/documents`                 | Register a doc, get a presigned upload URL |
-| POST   | `/api/documents/{id}/ingest`     | Start async ingestion                     |
-| GET    | `/api/documents`                 | List documents                            |
-| GET    | `/api/documents/{id}`            | Document status                           |
-| GET    | `/api/documents/{id}/job`        | Live ingestion job status                 |
-| POST   | `/api/query`                     | Ask a question, get an answer + citations |
-| POST   | `/api/query/stream`              | Same, streamed token-by-token over SSE    |
-| POST   | `/api/search/images`             | Find images by a text description (CLIP)   |
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/documents` | Register a document and receive a presigned upload URL |
+| `POST` | `/api/documents/{id}/ingest` | Start asynchronous ingestion |
+| `GET` | `/api/documents` | List documents |
+| `GET` | `/api/documents/{id}` | Get document status |
+| `GET` | `/api/documents/{id}/job` | Get the latest ingestion job |
+| `POST` | `/api/query` | Generate an answer with citations |
+| `POST` | `/api/query/stream` | Stream an answer and citations over SSE |
+| `POST` | `/api/search/images` | Search indexed images using text |
 
-`POST /api/query` and `/api/query/stream` accept optional `document_id` (scope
-to one doc), `top_k`, and `include_images` (default `true`). `/search/images` hits include bounding boxes when
-available.
-
-When `API_KEY` is set in `.env`, send it as the `X-API-Key` header on every
-`/api/*` request. Every response carries an `X-Request-ID` for log correlation.
+Query requests support optional `document_id`, `top_k`, and `include_images`
+fields. When `API_KEY` is configured, include it in the `X-API-Key` header.
 
 ## Tests
 

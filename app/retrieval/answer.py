@@ -23,7 +23,8 @@ SYSTEM_PROMPT = (
     "in the same order as the image-numbered sources. Cite every claim with "
     "inline markers like [1] or [2] that match the source numbers (image sources "
     "are numbered too). If the question cannot be answered from the sources or "
-    "images, say so plainly. Do not invent sources."
+    "images, say so plainly. Use separate markers such as [1][2], not ranges "
+    "such as [1-2]. Do not invent sources."
 )
 
 NO_RESULTS = "I couldn't find anything relevant in the indexed documents."
@@ -91,8 +92,13 @@ def _image_payload(sources: list[Source]) -> list[str]:
 
 
 def extract_markers(answer: str) -> set[int]:
-    """Pull inline citation markers like [1], [2] out of the model's answer."""
-    return {int(m) for m in re.findall(r"\[(\d+)\]", answer)}
+    """Pull inline citation markers like [1], [2], or [1-3] from an answer."""
+    markers: set[int] = set()
+    for start, end in re.findall(r"\[(\d+)(?:\s*[-–]\s*(\d+))?\]", answer):
+        first = int(start)
+        last = int(end) if end else first
+        markers.update(range(min(first, last), max(first, last) + 1))
+    return markers
 
 
 def _citations_for(session: Session, sources: list[Source], answer: str) -> list[Citation]:

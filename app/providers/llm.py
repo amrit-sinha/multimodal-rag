@@ -23,6 +23,12 @@ class OllamaLLM:
         self.base_url = (base_url or settings.ollama_base_url).rstrip("/")
         self.model = model or settings.llm_model
 
+    def _options(self) -> dict:
+        opts: dict = {"temperature": 0.1}
+        if settings.ollama_num_gpu is not None:
+            opts["num_gpu"] = settings.ollama_num_gpu
+        return opts
+
     def _messages(self, system: str, prompt: str, images: list[str] | None) -> list[dict]:
         user_msg: dict = {"role": "user", "content": prompt}
         if images:
@@ -39,7 +45,7 @@ class OllamaLLM:
             "messages": self._messages(system, prompt, images),
             "stream": False,
             "keep_alive": settings.ollama_keep_alive,
-            "options": {"temperature": 0.1},
+            "options": self._options(),
         }
         # Generous timeout: the first call cold-loads the model into (V)RAM,
         # which is slow on modest GPUs before generation even starts.
@@ -58,7 +64,7 @@ class OllamaLLM:
             "messages": self._messages(system, prompt, images),
             "stream": True,
             "keep_alive": settings.ollama_keep_alive,
-            "options": {"temperature": 0.1},
+            "options": self._options(),
         }
         with httpx.Client(timeout=600) as client:
             with client.stream("POST", f"{self.base_url}/api/chat", json=payload) as resp:

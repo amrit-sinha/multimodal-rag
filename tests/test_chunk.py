@@ -1,4 +1,4 @@
-from app.ingest.chunk import chunk_pages
+from app.ingest.chunk import _split_page, chunk_pages
 from app.ingest.extract import Page
 
 
@@ -33,3 +33,12 @@ def test_offsets_are_within_page_text():
     for c in chunks:
         assert 0 <= c.char_start < len(text)
         assert c.char_end <= len(text)
+
+
+def test_overlap_starts_on_word_boundary_and_offsets_match():
+    text = "alpha bravo charlie delta echo foxtrot golf hotel india juliet"
+    chunks = _split_page(Page(page_no=1, text=text), size=24, overlap=8)
+    assert len(chunks) > 1
+    for chunk in chunks:
+        assert chunk.char_start == 0 or text[chunk.char_start - 1].isspace()
+        assert text[chunk.char_start:chunk.char_end] == chunk.content

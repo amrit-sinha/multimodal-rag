@@ -49,10 +49,15 @@ def main(pdf_path: str, question: str) -> None:
             return
 
         # 5. Ask a question.
-        ans = client.post(
+        q = client.post(
             f"{API}/query",
-            json={"question": question, "document_id": document_id},
-        ).json()
+            json={"question": question, "document_id": document_id, "include_images": False},
+        )
+        if q.status_code >= 400:
+            body = q.json()
+            print(f"\nquery failed ({q.status_code}): {body.get('detail', body)}")
+            return
+        ans = q.json()
 
         print("\n=== ANSWER ===")
         print(ans["answer"])

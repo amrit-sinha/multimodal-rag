@@ -32,10 +32,13 @@ class Settings(BaseSettings):
     image_embedding_dim: int = 512
     ollama_base_url: str = "http://host.docker.internal:11434"
     # Multimodal (vision) model so the LLM can actually "see" retrieved images.
-    llm_model: str = "gemma4:12b"
+    llm_model: str = "gemma4:e2b"
     # Keep the model resident in Ollama between calls so large models don't pay a
     # multi-minute cold-load on every request.
-    ollama_keep_alive: str = "30m"
+    ollama_keep_alive: str = "10m"
+    # Ollama GPU layers to offload. Set to 0 on 4GB GPUs when large vision models
+    # crash CUDA (stack-buffer overrun). Unset = Ollama default (use GPU).
+    ollama_num_gpu: int | None = None
 
     # Retrieval / chunking
     top_k: int = 5

@@ -27,14 +27,28 @@ def _split_page(page: Page, size: int, overlap: int) -> list[TextChunk]:
             window = text.rfind(" ", start + overlap, end)
             if window != -1:
                 end = window
-        content = text[start:end].strip()
+        raw = text[start:end]
+        left_trim = len(raw) - len(raw.lstrip())
+        right_trim = len(raw) - len(raw.rstrip())
+        content = raw.strip()
         if content:
             chunks.append(
-                TextChunk(content=content, page_no=page.page_no, char_start=start, char_end=end)
+                TextChunk(
+                    content=content,
+                    page_no=page.page_no,
+                    char_start=start + left_trim,
+                    char_end=end - right_trim,
+                )
             )
         if end >= n:
             break
         start = max(end - overlap, start + 1)
+        # The overlap may land inside a word; advance to the next boundary so
+        # citations and snippets never start with a partial word.
+        if start > 0 and not text[start - 1].isspace():
+            boundary = text.find(" ", start, end)
+            if boundary != -1:
+                start = boundary + 1
 
     return chunks
 

@@ -13,7 +13,7 @@ Examples:
     python scripts/test_vision.py
 
     # Try a different model, or force CPU (avoids the 4GB-GPU CUDA crash):
-    python scripts/test_vision.py samples/red_square.png --model gemma4:12b
+    python scripts/test_vision.py samples/red_square.png --model gemma4:e2b
     python scripts/test_vision.py samples/red_square.png --cpu
 """
 
@@ -39,7 +39,7 @@ def load_image(path: str | None) -> bytes:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("image", nargs="?", help="Path to an image file (optional)")
-    parser.add_argument("--model", default="gemma4:12b", help="Ollama model tag")
+    parser.add_argument("--model", default="gemma4:e2b", help="Ollama model tag")
     parser.add_argument("--prompt", default="Describe this image in one sentence. What objects and colors do you see?")
     parser.add_argument("--cpu", action="store_true", help="Force CPU (num_gpu=0)")
     parser.add_argument("--ollama", default=OLLAMA, help="Ollama base URL")

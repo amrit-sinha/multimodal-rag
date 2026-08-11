@@ -16,7 +16,7 @@ import httpx
 API = "http://localhost:8000/api"
 
 
-def _ingest(client: httpx.Client, path: str) -> str:
+def _ingest(client: httpx.Client, path: str) -> tuple[str, str]:
     filename = path.replace("\\", "/").split("/")[-1]
     mime = mimetypes.guess_type(filename)[0] or "image/png"
 
@@ -33,19 +33,43 @@ def _ingest(client: httpx.Client, path: str) -> str:
             print(f"  {filename}: {job['status']}")
             break
         time.sleep(1)
-    return document_id
+    return document_id, filename
 
 
 def main(query: str, paths: list[str]) -> None:
     with httpx.Client(timeout=600) as client:
         print("Ingesting images...")
+        uploaded: dict[str, str] = {}
         for p in paths:
-            _ingest(client, p)
+            doc_id, filename = _ingest(client, p)
+            uploaded[doc_id] = filename
 
+        # Search globally, then keep only images from *this* run so older test
+        # uploads don't pollute the ranking shown in a demo.
         print(f"\nSearching images for: {query!r}")
-        resp = client.post(f"{API}/search/images", json={"query": query}).json()
-        for i, hit in enumerate(resp["hits"], start=1):
-            print(f"  {i}. score={hit['score']} doc={hit['document_id']} url={'yes' if hit['image_url'] else 'no'}")
+        resp = client.post(
+            f"{API}/search/images",
+            json={"query": query, "top_k": max(20, len(paths) * 5)},
+        )
+        if resp.status_code >= 400:
+            body = resp.json()
+            print(f"search failed ({resp.status_code}): {body.get('detail', body)}")
+            return
+
+        hits = [
+            h for h in resp.json()["hits"]
+            if h["document_id"] in uploaded
+        ]
+        if not hits:
+            print("  (no hits among images uploaded in this run)")
+            return
+
+        for i, hit in enumerate(hits, start=1):
+            name = uploaded[hit["document_id"]]
+            print(f"  {i}. {name}  score={hit['score']}")
+
+        winner = hits[0]
+        print(f"\nTop match: {uploaded[winner['document_id']]}")
 
 
 if __name__ == "__main__":

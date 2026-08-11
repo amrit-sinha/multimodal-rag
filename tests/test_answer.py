@@ -25,6 +25,7 @@ def _text_source(page_no: int, content: str, score: float) -> Source:
 
 def test_extract_markers():
     assert extract_markers("foo [1] bar [3] baz [1]") == {1, 3}
+    assert extract_markers("sources [1-4]") == {1, 2, 3, 4}
     assert extract_markers("no markers here") == set()
 
 

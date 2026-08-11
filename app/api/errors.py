@@ -29,6 +29,16 @@ def register_exception_handlers(app: FastAPI) -> None:
             content=_payload(exc.errors(), request_id_ctx.get()),
         )
 
+    @app.exception_handler(RuntimeError)
+    async def runtime_handler(request: Request, exc: RuntimeError):
+        rid = request_id_ctx.get()
+        msg = str(exc)
+        if msg.startswith("Ollama"):
+            logger.error("Ollama error on %s %s: %s", request.method, request.url.path, msg)
+            return JSONResponse(status_code=502, content=_payload(msg, rid))
+        logger.exception("Unhandled RuntimeError on %s %s", request.method, request.url.path)
+        return JSONResponse(status_code=500, content=_payload("Internal server error", rid))
+
     @app.exception_handler(Exception)
     async def unhandled_handler(request: Request, exc: Exception):
         rid = request_id_ctx.get()
